@@ -1,3 +1,3 @@
-module Timos-Api/Authenticator
+module Timos-API/Authenticator
 
 go 1.16
