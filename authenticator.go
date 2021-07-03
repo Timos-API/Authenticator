@@ -1,4 +1,4 @@
-package authenticator
+package main
 
 import (
 	"encoding/json"
@@ -15,9 +15,8 @@ import (
 )
 
 func init() {
-	if err := godotenv.Load(".env"); err == nil {
-		return
-	}
+
+	godotenv.Load(".env")
 
 	if len(os.Getenv("JWT_SECRET")) < 10 {
 		log.Fatal("No env set")
