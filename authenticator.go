@@ -1,6 +1,7 @@
-package authenticator
+package authenticator /* import "auth" */
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -8,11 +9,28 @@ import (
 	"strings"
 
 	"github.com/brianvoe/sjwt"
-	"github.com/gorilla/context"
 	"github.com/mitchellh/mapstructure"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/joho/godotenv"
 )
+
+type Exception struct {
+	Message string `json:"message"`
+}
+
+type User struct {
+	UserID      primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
+	ProviderID  string             `json:"providerId" bson:"providerId"`
+	Provider    string             `json:"provider" bson:"provider"`
+	Name        string             `json:"name" bson:"name"`
+	Avatar      string             `json:"avatar" bson:"avatar"`
+	Group       string             `json:"group" bson:"group"`
+	MemberSince int64              `json:"member_since" bson:"member_since"`
+	LastLogin   int64              `json:"last_login" bson:"last_login"`
+}
+
+type userKey struct{}
 
 func init() {
 
@@ -23,10 +41,15 @@ func init() {
 	}
 }
 
-func ExtractUser(req *http.Request) User {
-	var user User
-	mapstructure.Decode(context.Get(req, "user"), &user)
-	return user
+func ExtractUser(req *http.Request) (*User, error) {
+	var user *User
+	err := mapstructure.Decode(req.Context().Value(&userKey{}), user)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }
 
 func AuthMiddleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
@@ -69,10 +92,9 @@ func AuthMiddleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
 			return
 		}
 
-		context.Set(req, "user", user)
-
 		if next != nil {
-			next(w, req)
+			ctx := context.WithValue(req.Context(), &userKey{}, user)
+			next(w, req.WithContext(ctx))
 		}
 	})
 }
