@@ -52,7 +52,7 @@ func ExtractUser(req *http.Request) (*User, error) {
 	return user, nil
 }
 
-func AuthMiddleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
+func Middleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		authHeader := req.Header.Get("Authorization")
 		if authHeader == "" {
