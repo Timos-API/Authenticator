@@ -1,8 +1,7 @@
-package authenticator /* import "auth" */
+package auth
 
 import (
 	"context"
-	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -15,10 +14,6 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type Exception struct {
-	Message string `json:"message"`
-}
-
 type User struct {
 	UserID      primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
 	ProviderID  string             `json:"providerId" bson:"providerId"`
@@ -26,11 +21,58 @@ type User struct {
 	Name        string             `json:"name" bson:"name"`
 	Avatar      string             `json:"avatar" bson:"avatar"`
 	Group       string             `json:"group" bson:"group"`
+	Permissions []string           `json:"permissions" bson:"permissions"`
 	MemberSince int64              `json:"member_since" bson:"member_since"`
 	LastLogin   int64              `json:"last_login" bson:"last_login"`
 }
 
+func (u *User) IsInGroup(groups []string) bool {
+	for _, group := range groups {
+		if u.Group == group {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *User) HasPermission(permission string) bool {
+	for _, perm := range u.Permissions {
+		if perm == permission {
+			return true
+		}
+	}
+	return false
+}
+
+func (u *User) HasAnyPermission(permissions []string) bool {
+	for _, perm := range permissions {
+		if u.HasPermission(perm) {
+			return true
+		}
+	}
+	return false
+}
+
 type userKey struct{}
+
+type GuardOptions struct {
+	Groups      *[]string
+	Permissions *[]string
+}
+
+func Guard() *GuardOptions {
+	return &GuardOptions{}
+}
+
+func (g *GuardOptions) G(groups ...string) *GuardOptions {
+	g.Groups = &groups
+	return g
+}
+
+func (g *GuardOptions) P(permissions ...string) *GuardOptions {
+	g.Permissions = &permissions
+	return g
+}
 
 func init() {
 
@@ -42,17 +84,17 @@ func init() {
 }
 
 func ExtractUser(req *http.Request) (*User, error) {
-	var user *User
-	err := mapstructure.Decode(req.Context().Value(&userKey{}), user)
+	var user User
+	err := mapstructure.Decode(req.Context().Value(&userKey{}), &user)
 
 	if err != nil {
 		return nil, err
 	}
 
-	return user, nil
+	return &user, nil
 }
 
-func Middleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
+func Middleware(next http.HandlerFunc, opts *GuardOptions) http.HandlerFunc {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		authHeader := req.Header.Get("Authorization")
 		if authHeader == "" {
@@ -87,7 +129,7 @@ func Middleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
 		var user User
 		claims.ToStruct(&user)
 
-		if groups != nil && !contains(groups, user.Group) {
+		if !hasAccessRights(user, opts) {
 			unauthorized(w, "Insufficient permissions")
 			return
 		}
@@ -99,17 +141,16 @@ func Middleware(next http.HandlerFunc, groups []string) http.HandlerFunc {
 	})
 }
 
-func unauthorized(w http.ResponseWriter, reason string) {
-	w.WriteHeader(http.StatusUnauthorized)
-	w.Header().Add("content-type", "application/json")
-	json.NewEncoder(w).Encode(Exception{reason})
+func hasAccessRights(user User, opts *GuardOptions) bool {
+	if opts != nil {
+		groupCond := opts.Groups != nil && user.IsInGroup(*opts.Groups)
+		permsCond := opts.Permissions != nil && user.HasAnyPermission(*opts.Permissions)
+
+		return groupCond || permsCond
+	}
+	return true
 }
 
-func contains(arr []string, str string) bool {
-	for _, a := range arr {
-		if a == str {
-			return true
-		}
-	}
-	return false
+func unauthorized(w http.ResponseWriter, reason string) {
+	http.Error(w, reason, http.StatusUnauthorized)
 }

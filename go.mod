@@ -1,4 +1,4 @@
-module github.com/Timos-API/Authenticator
+module github.com/Timos-API/auth
 
 go 1.16
 
